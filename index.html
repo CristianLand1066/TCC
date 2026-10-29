@@ -29,9 +29,9 @@
 <label for="speed">Velocidade da simulação local</label><input id="speed" type="range" min="10" max="100" value="50">
 <h3>Passos interpretados</h3><pre id="steps">Nenhuma sequência iniciada.</pre>
 </section><section class="box map-panel" id="mapPanel"><h2>Plano cartesiano — 1 × 1 cm</h2>
-<div class="map-toolbar"><button id="zoomIn" class="alt" title="Aumentar zoom">＋</button><button id="zoomOut" class="alt" title="Diminuir zoom">－</button><button id="center" class="alt">Centralizar</button><button id="fit" class="alt">Enquadrar trajeto</button><button id="fullscreen" class="alt">⛶ Tela cheia</button><span class="scale" id="scaleLabel">1 quadrícula = 1 cm</span></div>
+<div class="map-toolbar"><button id="zoomIn" class="alt" title="Aumentar zoom">＋</button><button id="zoomOut" class="alt" title="Diminuir zoom">－</button><button id="center" class="alt">Centralizar</button><button id="fit" class="alt" title="Reativar enquadramento automático">◎ Autoenquadrar: ligado</button><button id="fullscreen" class="alt">⛶ Tela cheia</button><span class="scale" id="scaleLabel">1 quadrícula = 1 cm</span></div>
 <div class="canvas-wrap" id="canvasWrap"><canvas id="map" aria-label="Plano cartesiano interativo com grade de um centímetro"></canvas><button type="button" id="exitFloating" class="floating-exit stop">Sair da tela cheia</button></div>
-<p id="position">X: 0 cm | Y: 0 cm | direção: 0°</p><p id="activity">Parado</p><p class="tiny muted">Arraste para mover o mapa. Use a roda do mouse ou os botões +/− para zoom. Cada quadrícula fina equivale a <b>1 cm nas coordenadas virtuais</b> (não 1 cm físico no monitor). Linhas fortes a cada 10 cm.</p><h3>Eventos</h3><pre id="log">Pronto para testar.</pre></section></div>
+<p id="position">X: 0 cm | Y: 0 cm | direção: 0°</p><p id="activity">Parado</p><p class="tiny muted">O desenho é enquadrado automaticamente durante a execução. Arrastar ou alterar o zoom desativa o modo automático; clique em Autoenquadrar para reativar. Use a roda do mouse ou os botões +/− para zoom. Cada quadrícula fina equivale a <b>1 cm nas coordenadas virtuais</b> (não 1 cm físico no monitor). Linhas fortes a cada 10 cm.</p><h3>Eventos</h3><pre id="log">Pronto para testar.</pre></section></div>
 <script src="https://unpkg.com/mqtt@5.14.1/dist/mqtt.min.js"></script>
 <script>
 'use strict';
@@ -56,6 +56,9 @@ function parse(text){const parts=text.split(/\b(?:dann|danach|anschliessend|ansc
 // O sistema de coordenadas usa X para a direita e Y para baixo, preservando o firmware original.
 // Cada intervalo da grade representa exatamente 1 cm no mundo virtual.
 const view={pxPerCm:12,centerX:0,centerY:0};
+let autoFit=true, plannedTrace=[];
+function showFitStatus(){el("fit").textContent=autoFit?"◎ Autoenquadrar: ligado":"◎ Autoenquadrar: desligado";}
+function disableAutoFit(){if(autoFit){autoFit=false;showFitStatus()}}
 function canvasSize(){const c=el('map'),rect=el('canvasWrap').getBoundingClientRect();const dpr=Math.min(devicePixelRatio||1,2);const w=Math.max(120,rect.width),h=Math.max(120,rect.height);if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr)}return {w,h,dpr}}
 function worldToScreen(x,y,w,h){return {x:w/2+(x-view.centerX)*view.pxPerCm,y:h/2+(y-view.centerY)*view.pxPerCm}}
 function draw(){const c=el('map'),g=c.getContext('2d'),{w,h,dpr}=canvasSize();g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);g.fillStyle='#0b1b2c';g.fillRect(0,0,w,h);
@@ -70,25 +73,48 @@ function draw(){const c=el('map'),g=c.getContext('2d'),{w,h,dpr}=canvasSize();g.
  el('position').textContent=`X: ${pose.x.toFixed(1)} cm | Y: ${(-pose.y).toFixed(1)} cm | direção: ${angle(pose.heading).toFixed(0)}° (sentido horário)`;
  el('scaleLabel').textContent=`1 quadrícula = 1 cm · zoom ${view.pxPerCm.toFixed(1)} px/cm`;
 }
-function zoomAt(factor,sx,sy){const {w,h}=canvasSize();sx??=w/2;sy??=h/2;const wx=view.centerX+(sx-w/2)/view.pxPerCm,wy=view.centerY+(sy-h/2)/view.pxPerCm;view.pxPerCm=Math.max(2,Math.min(40,view.pxPerCm*factor));view.centerX=wx-(sx-w/2)/view.pxPerCm;view.centerY=wy-(sy-h/2)/view.pxPerCm;draw()}
-function centerMap(){view.centerX=pose.x;view.centerY=pose.y;draw()}
-function fitMap(){const {w,h}=canvasSize();const arr=[...trace,pose,{x:0,y:0}];let minX=Math.min(...arr.map(p=>p.x)),maxX=Math.max(...arr.map(p=>p.x)),minY=Math.min(...arr.map(p=>p.y)),maxY=Math.max(...arr.map(p=>p.y));view.centerX=(minX+maxX)/2;view.centerY=(minY+maxY)/2;view.pxPerCm=Math.max(2,Math.min(40,Math.min((w-90)/Math.max(20,maxX-minX),(h-90)/Math.max(20,maxY-minY))));draw()}
-el('zoomIn').onclick=()=>zoomAt(1.3);el('zoomOut').onclick=()=>zoomAt(1/1.3);el('center').onclick=centerMap;el('fit').onclick=fitMap;
-let drag=null;const wrap=el('canvasWrap');wrap.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;drag={x:e.clientX,y:e.clientY,cx:view.centerX,cy:view.centerY};wrap.setPointerCapture(e.pointerId)});wrap.addEventListener('pointermove',e=>{if(!drag)return;view.centerX=drag.cx-(e.clientX-drag.x)/view.pxPerCm;view.centerY=drag.cy-(e.clientY-drag.y)/view.pxPerCm;draw()});const stopDrag=()=>drag=null;wrap.addEventListener('pointerup',stopDrag);wrap.addEventListener('pointercancel',stopDrag);
+function zoomAt(factor,sx,sy){disableAutoFit();const {w,h}=canvasSize();sx??=w/2;sy??=h/2;const wx=view.centerX+(sx-w/2)/view.pxPerCm,wy=view.centerY+(sy-h/2)/view.pxPerCm;view.pxPerCm=Math.max(2,Math.min(40,view.pxPerCm*factor));view.centerX=wx-(sx-w/2)/view.pxPerCm;view.centerY=wy-(sy-h/2)/view.pxPerCm;draw()}
+function centerMap(){disableAutoFit();view.centerX=pose.x;view.centerY=pose.y;draw()}
+function predictTrace(steps){
+ const predicted=[{...pose}];let p={...pose};
+ for(const step of steps){if(step.cmd==='stop')break;
+  if(step.cmd==='left'||step.cmd==='right')p.heading+=(step.cmd==='left'?-1:1)*step.value;
+  else if(step.cmd==='forward'||step.cmd==='backward'){
+   const d=step.value*(step.cmd==='backward'?-1:1);
+   p.x+=Math.cos(p.heading*Math.PI/180)*d;
+   p.y+=Math.sin(p.heading*Math.PI/180)*d;
+   predicted.push({...p});
+  }
+ }
+ return predicted;
+}
+function fitMap(redraw=true){
+ const {w,h}=canvasSize();const pts=[...trace,...plannedTrace,pose,{x:0,y:0}];
+ const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+ const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+ view.centerX=(minX+maxX)/2;view.centerY=(minY+maxY)/2;
+ const spanX=Math.max(12,maxX-minX),spanY=Math.max(12,maxY-minY);
+ const padding=Math.min(80,Math.max(35,Math.min(w,h)*0.13));
+ view.pxPerCm=Math.max(0.05,Math.min(40,(w-2*padding)/spanX,(h-2*padding)/spanY));
+ if(redraw)draw();
+}
+function enableAutoFit(){autoFit=true;showFitStatus();fitMap()}
+el('zoomIn').onclick=()=>zoomAt(1.3);el('zoomOut').onclick=()=>zoomAt(1/1.3);el('center').onclick=centerMap;el('fit').onclick=enableAutoFit;
+let drag=null;const wrap=el('canvasWrap');wrap.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;disableAutoFit();drag={x:e.clientX,y:e.clientY,cx:view.centerX,cy:view.centerY};wrap.setPointerCapture(e.pointerId)});wrap.addEventListener('pointermove',e=>{if(!drag)return;view.centerX=drag.cx-(e.clientX-drag.x)/view.pxPerCm;view.centerY=drag.cy-(e.clientY-drag.y)/view.pxPerCm;draw()});const stopDrag=()=>drag=null;wrap.addEventListener('pointerup',stopDrag);wrap.addEventListener('pointercancel',stopDrag);
 wrap.addEventListener('wheel',e=>{e.preventDefault();const r=wrap.getBoundingClientRect();zoomAt(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top)},{passive:false});
-function updateFullscreenButton(){const expanded=document.fullscreenElement===wrap||el('mapPanel').classList.contains('expanded');el('fullscreen').textContent=expanded?'⤢ Sair da expansão':'⛶ Tela cheia';requestAnimationFrame(draw)}
+function updateFullscreenButton(){const expanded=document.fullscreenElement===wrap||el('mapPanel').classList.contains('expanded');el('fullscreen').textContent=expanded?'⤢ Sair da expansão':'⛶ Tela cheia';requestAnimationFrame(()=>autoFit?fitMap():draw())}
 async function toggleFullscreen(){const panel=el('mapPanel');if(document.fullscreenElement===wrap){await document.exitFullscreen();return}if(panel.classList.contains('expanded')){panel.classList.remove('expanded');updateFullscreenButton();return}if(wrap.requestFullscreen){try{await wrap.requestFullscreen();return}catch(e){log('Tela cheia nativa indisponível: '+e.message)}}panel.classList.add('expanded');updateFullscreenButton()}
-el('fullscreen').onclick=toggleFullscreen;el('exitFloating').onclick=toggleFullscreen;document.addEventListener('fullscreenchange',updateFullscreenButton);window.addEventListener('resize',draw);if(window.ResizeObserver)new ResizeObserver(draw).observe(wrap);
-function updatePose(p){if(Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.heading)){pose={x:p.x,y:p.y,heading:p.heading};trace.push({x:pose.x,y:pose.y});if(trace.length>2000)trace.shift();draw()}}
+el('fullscreen').onclick=toggleFullscreen;el('exitFloating').onclick=toggleFullscreen;document.addEventListener('fullscreenchange',updateFullscreenButton);window.addEventListener('resize',()=>autoFit?fitMap():draw());if(window.ResizeObserver)new ResizeObserver(()=>autoFit?fitMap():draw()).observe(wrap);
+function updatePose(p){if(Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.heading)){pose={x:p.x,y:p.y,heading:p.heading};trace.push({x:pose.x,y:pose.y});if(trace.length>2000)trace.shift();if(autoFit)fitMap();else draw()}}
 function changeMode(){cancel(false);el('connection').textContent=el('mode').value==='local'?'Modo local':client?.connected?'MQTT conectado':'MQTT desconectado';}
 el('mode').onchange=changeMode;
 function connect(){if(!window.mqtt){log('A biblioteca MQTT.js não carregou. Verifique a internet.');return}const root=el('root').value.trim().replace(/\/+$/,'');if(!/^[a-zA-Z0-9_/-]{6,100}$/.test(root)){log('Prefixo MQTT inválido');return}cancel(false);if(client){client.end(true);client=null}connectedRoot=root;el('connection').textContent='Conectando MQTT...';client=mqtt.connect('wss://broker.emqx.io:8084/mqtt',{clientId:'land-web-'+Math.random().toString(16).slice(2),clean:true,reconnectPeriod:3000,connectTimeout:12000});client.on('connect',()=>{el('connection').textContent='MQTT conectado';client.subscribe(root+'/state',err=>log(err?'Falha na assinatura: '+err.message:'Inscrito em '+root+'/state'));log('Conectado. Verifique se o ESP32 está executando no Wokwi.')});client.on('reconnect',()=>el('connection').textContent='Reconectando...');client.on('close',()=>el('connection').textContent='MQTT desconectado');client.on('error',e=>log('MQTT: '+e.message));client.on('message',(topic,message)=>{if(topic!==connectedRoot+'/state')return;try{const p=JSON.parse(message.toString());updatePose(p);el('activity').textContent=`ESP32: ${p.event||'estado desconhecido'}`;if(['ready','started','completed','stopped','reset'].includes(p.event))log('ESP32: '+p.event);if(p.event==='completed'&&resolveAck){const resolve=resolveAck;resolveAck=null;clearTimeout(watchdog);resolve()};if(['stopped','reset'].includes(p.event)&&resolveAck){const resolve=resolveAck;resolveAck=null;clearTimeout(watchdog);resolve()}}catch(e){log('Estado inválido: '+e.message)}})}
 function publish(step){if(!client?.connected)throw Error('MQTT não conectado. Selecione Simulação local ou conecte o Wokwi.');client.publish(connectedRoot+'/cmd',JSON.stringify(step),{qos:0,retain:false});log('Enviado: '+JSON.stringify(step))}
-function cancel(publishStop){generation++;queue=[];halted=true;busy=false;clearTimeout(timer);clearTimeout(watchdog);if(resolveAck){resolveAck();resolveAck=null}if(publishStop&&el('mode').value==='mqtt'&&client?.connected)publish({cmd:'stop',value:0});el('activity').textContent='Parado'}
-async function localMove(step,token){const duration=(step.cmd==='left'||step.cmd==='right'?step.value/60:step.value/18)*1000*(50/Number(el('speed').value));const start=performance.now();const from={...pose};return new Promise(resolve=>{const tick=now=>{if(token!==generation||halted){resolve();return}const f=Math.min(1,(now-start)/Math.max(100,duration));if(step.cmd==='left'||step.cmd==='right')pose.heading=from.heading+(step.cmd==='left'?-1:1)*step.value*f;else{const signed=(step.cmd==='backward'?-1:1)*step.value*f;pose.x=from.x+Math.cos(from.heading*Math.PI/180)*signed;pose.y=from.y+Math.sin(from.heading*Math.PI/180)*signed}if(Math.floor(now/90)%2===0)trace.push({x:pose.x,y:pose.y});draw();if(f<1)requestAnimationFrame(tick);else resolve()};requestAnimationFrame(tick)})}
+function cancel(publishStop){generation++;queue=[];plannedTrace=[];halted=true;busy=false;clearTimeout(timer);clearTimeout(watchdog);if(resolveAck){resolveAck();resolveAck=null}if(publishStop&&el('mode').value==='mqtt'&&client?.connected)publish({cmd:'stop',value:0});el('activity').textContent='Parado'}
+async function localMove(step,token){const duration=(step.cmd==='left'||step.cmd==='right'?step.value/60:step.value/18)*1000*(50/Number(el('speed').value));const start=performance.now();const from={...pose};return new Promise(resolve=>{const tick=now=>{if(token!==generation||halted){resolve();return}const f=Math.min(1,(now-start)/Math.max(100,duration));if(step.cmd==='left'||step.cmd==='right')pose.heading=from.heading+(step.cmd==='left'?-1:1)*step.value*f;else{const signed=(step.cmd==='backward'?-1:1)*step.value*f;pose.x=from.x+Math.cos(from.heading*Math.PI/180)*signed;pose.y=from.y+Math.sin(from.heading*Math.PI/180)*signed}if(Math.floor(now/90)%2===0)trace.push({x:pose.x,y:pose.y});if(autoFit && !plannedTrace.length)fitMap();else draw();if(f<1)requestAnimationFrame(tick);else resolve()};requestAnimationFrame(tick)})}
 function mqttMove(step){return new Promise((resolve,reject)=>{if(!client?.connected){reject(Error('MQTT desconectado'));return}resolveAck=resolve;watchdog=setTimeout(()=>{resolveAck=null;reject(Error('O ESP32 não confirmou “completed” em 45 s. Confira Play, Wi-Fi e TOPIC_ROOT no Wokwi.'))},45000);try{publish(step)}catch(e){clearTimeout(watchdog);resolveAck=null;reject(e)}})}
-async function execute(){if(busy){log('Uma sequência já está em execução. Use Stopp antes de reiniciar.');return}let steps;try{steps=parse(el('cmd').value)}catch(e){log('Erro: '+e.message);return}if(el('mode').value==='mqtt'&&!client?.connected){log('Conecte ao MQTT antes de executar, ou selecione Simulação local.');return}halted=false;busy=true;const token=++generation;queue=steps;el('steps').textContent=steps.map((s,i)=>`${i+1}. ${s.cmd} ${s.value}`).join('\n');log(`Iniciando ${steps.length} ações no modo ${el('mode').value}`);try{for(const [index,step] of steps.entries()){if(halted||token!==generation)break;el('activity').textContent=`Executando ${index+1}/${steps.length}: ${step.cmd} ${step.value}`;if(step.cmd==='stop'){cancel(true);break}if(el('mode').value==='local')await localMove(step,token);else await mqttMove(step);if(token!==generation||halted)break}if(!halted&&token===generation)log('Sequência concluída.')}catch(e){log('Erro: '+e.message)}finally{if(token===generation){busy=false;queue=[];el('activity').textContent='Parado'}}}
-el('connect').onclick=connect;el('run').onclick=execute;el('stop').onclick=()=>{cancel(true);log('Parado pelo usuário')};el('reset').onclick=()=>{cancel(true);pose={x:0,y:0,heading:0};trace=[{x:0,y:0}];draw();if(el('mode').value==='mqtt'&&client?.connected)publish({cmd:'reset',value:0});log('Posição reiniciada')};
+async function execute(){if(busy){log('Uma sequência já está em execução. Use Stopp antes de reiniciar.');return}let steps;try{steps=parse(el('cmd').value)}catch(e){log('Erro: '+e.message);return}if(el('mode').value==='mqtt'&&!client?.connected){log('Conecte ao MQTT antes de executar, ou selecione Simulação local.');return}halted=false;busy=true;const token=++generation;queue=steps;plannedTrace=predictTrace(steps);if(autoFit)fitMap();el('steps').textContent=steps.map((s,i)=>`${i+1}. ${s.cmd} ${s.value}`).join('\n');log(`Iniciando ${steps.length} ações no modo ${el('mode').value}`);try{for(const [index,step] of steps.entries()){if(halted||token!==generation)break;el('activity').textContent=`Executando ${index+1}/${steps.length}: ${step.cmd} ${step.value}`;if(step.cmd==='stop'){cancel(true);break}if(el('mode').value==='local')await localMove(step,token);else await mqttMove(step);if(token!==generation||halted)break}if(!halted&&token===generation)log('Sequência concluída.')}catch(e){log('Erro: '+e.message)}finally{if(token===generation){busy=false;queue=[];plannedTrace=[];if(autoFit)fitMap();el('activity').textContent='Parado'}}}
+el('connect').onclick=connect;el('run').onclick=execute;el('stop').onclick=()=>{cancel(true);log('Parado pelo usuário')};el('reset').onclick=()=>{cancel(true);pose={x:0,y:0,heading:0};trace=[{x:0,y:0}];plannedTrace=[];if(autoFit)fitMap();else draw();if(el('mode').value==='mqtt'&&client?.connected)publish({cmd:'reset',value:0});log('Posição reiniciada')};
 // Reconhecimento de fala: requer navegador compatível, contexto seguro e permissão do usuário.
 let recognizer=null,voiceListening=false;
 const voiceButton=el('voice'),heard=el('heard'),micHelp=el('micHelp');
@@ -107,6 +133,6 @@ else{
 }
 // Guia rápido no console para diagnóstico do navegador.
 console.info('LAND Robotik: SpeechRecognition=',!!Rec,'secureContext=',window.isSecureContext,'origin=',location.origin);
-draw();
+showFitStatus();fitMap();
 </script>
 </body></html>
