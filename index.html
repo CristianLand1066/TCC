@@ -45,10 +45,12 @@ function fuzzyMatch(text, patterns, threshold=0.6){const t=normalize(text);for(c
 // Palavras-chave expandidas com variações comuns e português
 const patterns={stop:['stopp','stop','halt','anhalten','pare','parar','terminar'],left:['links','link','linke','esquerda','esquerdo','lateral esquerda'],right:['rechts','recht','rechte','direita','direito','lateral direita'],forward:['vor','vorwarts','vorwärts','frente','frente para','avancar','avançar','andar','ir'],backward:['zuruck','zurück','ruckwarts','rückwärts','tras','trás','trás para','voltar','recuar'],turn:['dreh','drehe','dreh dich','drehe dich','wende','wende dich','rotier','rotiere','girar','vire','rodar','virar'],complete:['komplett','komplett','vollstandig','vollständig','komplett','einmal','rundherum','completo','completa','todo','toda','redondo','circular','circulo'],cm:['zentimeter','cm','centimetro','centímetro','centi','cm'],grad:['grad','degree','degrees','grau','graus']};
 function parseOne(raw){const t=normalize(raw);if(!t)return [];
+console.log('ParseOne:', raw, '->', t);
 if(patterns.stop.some(p=>fuzzyMatch(t,[p])))return [{cmd:'stop',value:0}];
 const left=patterns.left.some(p=>fuzzyMatch(t,[p])),right=patterns.right.some(p=>fuzzyMatch(t,[p])),back=patterns.backward.some(p=>fuzzyMatch(t,[p]));
 if(left&&right)throw Error('Direções conflitantes: '+raw);
-const match=t.match(/(\d+(?:[.,]\d+)?)\s*(?:'+patterns.cm.join('|')+')/i);
+const match=t.match(/(\d+(?:[.,]\d+)?)\s*(?:'+patterns.cm.join('|')+')\b/i);
+console.log('Match:', match);
 const turning=patterns.turn.some(p=>fuzzyMatch(t,[p]))||!!(match&&patterns.grad.some(p=>fuzzyMatch(t,[p])));
 if(!match){if(turning)return [{cmd:left?'left':'right',value:patterns.complete.some(p=>fuzzyMatch(t,[p]))?360:90}];throw Error('Não reconheci o trecho: '+raw)}
 const value=Number(match[1].replace(',','.'));if(!(value>0))throw Error('Valor inválido: '+raw);
