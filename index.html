@@ -49,15 +49,14 @@ console.log('ParseOne:', raw, '->', t);
 if(patterns.stop.some(p=>fuzzyMatch(t,[p])))return [{cmd:'stop',value:0}];
 const left=patterns.left.some(p=>fuzzyMatch(t,[p])),right=patterns.right.some(p=>fuzzyMatch(t,[p])),back=patterns.backward.some(p=>fuzzyMatch(t,[p]));
 if(left&&right)throw Error('Direções conflitantes: '+raw);
-const match=t.match(/(\d+(?:[.,]\d+)?)\s*(?:zentimeter|cm|centimetro|centímetro|centi)\b/i);
-console.log('Match:', match);
-const turning=patterns.turn.some(p=>fuzzyMatch(t,[p]))||!!(match&&patterns.grad.some(p=>fuzzyMatch(t,[p])));
-if(!match){if(turning)return [{cmd:left?'left':'right',value:patterns.complete.some(p=>fuzzyMatch(t,[p]))?360:90}];throw Error('Não reconheci o trecho: '+raw)}
-const value=Number(match[1].replace(',','.'));if(!(value>0))throw Error('Valor inválido: '+raw);
-if(turning){if(!patterns.grad.some(p=>fuzzyMatch(t,[p]))||value>360)throw Error('Use um giro de até 360 Grad: '+raw);return [{cmd:left?'left':'right',value}]}
-if(!patterns.cm.some(p=>fuzzyMatch(t,[p]))||value>200)throw Error('Use uma distância de até 200 Zentimeter: '+raw);
-if(left||right)return [{cmd:left?'left':'right',value:90},{cmd:'forward',value}];
-return [{cmd:back?'backward':'forward',value}];}
+const matchCm=t.match(/(\d+(?:[.,]\d+)?)\s*(?:zentimeter|cm|centimetro|centímetro|centi)\b/i);
+const matchGrad=t.match(/(\d+(?:[.,]\d+)?)\s*(?:grad|degree|degrees|grau|graus)\b/i);
+console.log('MatchCM:', matchCm, 'MatchGrad:', matchGrad);
+const isTurn=patterns.turn.some(p=>fuzzyMatch(t,[p]))||!!matchGrad;
+if(matchGrad){const value=Number(matchGrad[1].replace(',','.'));if(!(value>0)||value>360)throw Error('Use um giro de até 360 Grad: '+raw);return [{cmd:left?'left':'right',value}]}
+if(matchCm){const value=Number(matchCm[1].replace(',','.'));if(value>200)throw Error('Use uma distância de até 200 Zentimeter: '+raw);if(left||right)return [{cmd:left?'left':'right',value:90},{cmd:'forward',value}];return [{cmd:back?'backward':'forward',value}]}
+if(isTurn){return [{cmd:left?'left':'right',value:patterns.complete.some(p=>fuzzyMatch(t,[p]))?360:90}]}
+throw Error('Não reconheci o trecho: '+raw);}
 function parse(text){const parts=text.split(/\b(?:dann|danach|anschliessend|anschließend|depois|então|entao|e)\b|[,;]|\.(?=\s|$)/i).map(s=>s.trim()).filter(Boolean);if(!parts.length)throw Error('Digite um comando.');if(parts.length>25)throw Error('Máximo de 25 instruções.');const result=parts.flatMap(parseOne);if(result.length>50)throw Error('Sequência muito longa.');return result;}
 // O sistema de coordenadas usa X para a direita e Y para baixo, preservando o firmware original.
 // Cada intervalo da grade representa exatamente 1 cm no mundo virtual.
