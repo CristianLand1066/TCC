@@ -119,20 +119,38 @@ el('connect').onclick=connect;el('run').onclick=execute;el('stop').onclick=()=>{
 let recognizer=null,voiceListening=false;
 const voiceButton=el('voice'),heard=el('heard'),micHelp=el('micHelp');
 const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
+console.log('SpeechRecognition disponível:', !!Rec);
+console.log('webkitSpeechRecognition disponível:', !!window.webkitSpeechRecognition);
+console.log('isSecureContext:', window.isSecureContext);
+console.log('Protocolo:', location.protocol);
 function voiceMessage(msg){heard.textContent=msg;log('Microfone: '+msg)}
-function speechError(code){const errors={'not-allowed':'Permissão negada: clique no cadeado do endereço e permita o microfone.','service-not-allowed':'Serviço de reconhecimento de voz bloqueado pelo navegador. Tente Chrome ou Edge.','audio-capture':'Nenhum microfone detectado. Confira o dispositivo de entrada do Windows.','no-speech':'Nenhuma fala detectada. Tente novamente, falando perto do microfone.','network':'Erro de rede no serviço de fala. Verifique a conexão e o navegador.','language-not-supported':'Idioma de-DE não disponível neste navegador.','aborted':'Gravação interrompida.'};return errors[code]||('Falha no reconhecimento: '+code)}
+function speechError(code){const errors={'not-allowed':'Permissão negada: clique no ícone de cadeado ou nos três pontos, ative "Mikrofon" nas permissões do site.','service-not-allowed':'Serviço de reconhecimento de voz bloqueado pelo navegador. Tente Chrome ou Edge.','audio-capture':'Nenhum microfone detectado. Confira o dispositivo de entrada.','no-speech':'Nenhuma fala detectada. Tente novamente, falando perto do microfone.','network':'Erro de rede no serviço de fala. Verifique a conexão e o navegador.','language-not-supported':'Idioma de-DE não disponível neste navegador.','aborted':'Gravação interrompida. Verifique se a permissão de microfone está ativada nas configurações do site.'};return errors[code]||('Falha no reconhecimento: '+code)}
 if(!Rec){voiceButton.disabled=true;voiceButton.textContent='🎤 Voz indisponível neste navegador';micHelp.textContent='Este navegador não implementa SpeechRecognition. Use Chrome ou Edge atualizado, ou digite os comandos normalmente.'}
 else if(!window.isSecureContext||location.protocol==='file:'){voiceButton.disabled=true;micHelp.textContent='O microfone exige HTTPS ou http://localhost. Não abra o HTML como arquivo (file://). Execute: python -m http.server 8000 e acesse http://localhost:8000.';heard.textContent='Abra a página em uma origem segura para ativar a voz.'}
 else{
- voiceButton.onclick=()=>{if(voiceListening){try{recognizer?.stop()}catch(e){}return}try{recognizer=new Rec();recognizer.lang='de-DE';recognizer.continuous=false;recognizer.interimResults=true;recognizer.maxAlternatives=1;
+ console.log('Configurando botão de voz...');
+ micHelp.textContent='Clique no microfone e permita o acesso. A frase reconhecida preencherá o campo; clique em Executar para confirmar. Melhor compatibilidade: Chrome/Edge em HTTPS ou localhost.';
+ console.log('Botão de voz configurado com sucesso');
+}
+
+// Configurar evento do botão de voz fora do if/else
+if(voiceButton){
+ console.log('Configurando onclick do botão de voz...');
+ voiceButton.onclick=()=>{console.log('Botão de voz clicado');if(voiceListening){try{recognizer?.stop()}catch(e){}return}try{recognizer=new Rec();recognizer.lang='de-DE';recognizer.continuous=false;recognizer.interimResults=true;recognizer.maxAlternatives=1;
  recognizer.onstart=()=>{voiceListening=true;voiceButton.classList.add('listening');voiceButton.textContent='■ Parar gravação';heard.textContent='🎤 Ouvindo... Fale em alemão.'};
  recognizer.onresult=e=>{let final='',partial='';for(let i=e.resultIndex;i<e.results.length;i++){const s=e.results[i][0].transcript;if(e.results[i].isFinal)final+=s+' ';else partial+=s+' '}heard.textContent='Reconhecido: '+(final||partial);if(final.trim()){el('cmd').value=final.trim();log('Voz reconhecida: '+final.trim());/* não dispara automaticamente: usuário pode revisar a frase */}};
  recognizer.onerror=e=>voiceMessage(speechError(e.error));recognizer.onend=()=>{voiceListening=false;voiceButton.classList.remove('listening');voiceButton.textContent='🎤 Falar em alemão'};
  recognizer.start();}catch(e){voiceMessage('Não foi possível iniciar: '+e.message)}};
- micHelp.textContent='Clique no microfone e permita o acesso. A frase reconhecida preencherá o campo; clique em Executar para confirmar. Melhor compatibilidade: Chrome/Edge em HTTPS ou localhost.';
+ console.log('Onclick configurado');
 }
 // Guia rápido no console para diagnóstico do navegador.
 console.info('LAND Robotik: SpeechRecognition=',!!Rec,'secureContext=',window.isSecureContext,'origin=',location.origin);
 showFitStatus();fitMap();
+
+// Configurar botão de voz após garantir que o DOM está pronto
+console.log('Verificando elementos de voz...');
+console.log('voiceButton:', el('voice'));
+console.log('heard:', el('heard'));
+console.log('micHelp:', el('micHelp'));
 </script>
 </body></html>
