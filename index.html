@@ -49,7 +49,7 @@ console.log('ParseOne:', raw, '->', t);
 if(patterns.stop.some(p=>fuzzyMatch(t,[p])))return [{cmd:'stop',value:0}];
 const left=patterns.left.some(p=>fuzzyMatch(t,[p])),right=patterns.right.some(p=>fuzzyMatch(t,[p])),back=patterns.backward.some(p=>fuzzyMatch(t,[p]));
 if(left&&right)throw Error('Direções conflitantes: '+raw);
-const match=t.match(/(\d+(?:[.,]\d+)?)\s*(?:'+patterns.cm.join('|')+')\b/i);
+const match=t.match(/(\d+(?:[.,]\d+)?)\s*(?:zentimeter|cm|centimetro|centímetro|centi)\b/i);
 console.log('Match:', match);
 const turning=patterns.turn.some(p=>fuzzyMatch(t,[p]))||!!(match&&patterns.grad.some(p=>fuzzyMatch(t,[p])));
 if(!match){if(turning)return [{cmd:left?'left':'right',value:patterns.complete.some(p=>fuzzyMatch(t,[p]))?360:90}];throw Error('Não reconheci o trecho: '+raw)}
