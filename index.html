@@ -20,7 +20,7 @@
 </div>
 <div class="grid"><section class="box">
 <h2>Sprachbefehle</h2>
-<button id="voice" type="button" class="alt" style="width:100%">🎤 Falar em alemão</button>
+<button id="voice" type="button" class="alt" style="width:100%">🎤 Falar (alemão ou português)</button>
 <p id="heard" class="tiny" role="status" aria-live="polite">Exemplo: „Fahr 80 Zentimeter vorwärts, dann fahr 30 Zentimeter nach links!“</p>
 <p id="micHelp" class="tiny muted">Para voz, use Chrome ou Edge em http://localhost ou HTTPS; autorize o microfone. O texto manual funciona em qualquer navegador.</p><label for="cmd">Comandos</label>
 <textarea id="cmd">Fahr 80 Zentimeter vorwärts, dann fahr 30 Zentimeter nach links, dann dreh dich nach rechts, dann fahr 10 Zentimeter vorwärts, dann dreh dich 360 Grad nach rechts!</textarea>
@@ -40,19 +40,23 @@ let client=null,connectedRoot='',pose={x:0,y:0,heading:0},queue=[],busy=false,ha
 const wait=ms=>new Promise(ok=>setTimeout(ok,ms));
 const angle=a=>((a%360)+360)%360;
 function normalize(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ß/g,'ss').trim()}
+// Fuzzy matching: aceita palavras aproximadas (útil para erros de pronúncia de crianças)
+function fuzzyMatch(text, patterns, threshold=0.6){const t=normalize(text);for(const p of patterns){const pat=normalize(p);if(t.includes(pat))return true;if(Math.abs(t.length-pat.length)<=2){let matches=0;const minLen=Math.min(t.length,pat.length);for(let i=0;i<minLen;i++)if(t[i]===pat[i])matches++;if(matches/minLen>=threshold)return true}}return false}
+// Palavras-chave expandidas com variações comuns e português
+const patterns={stop:['stopp','stop','halt','anhalten','pare','parar','terminar'],left:['links','link','linke','esquerda','esquerdo','lateral esquerda'],right:['rechts','recht','rechte','direita','direito','lateral direita'],forward:['vor','vorwarts','vorwärts','frente','frente para','avancar','avançar','andar','ir'],backward:['zuruck','zurück','ruckwarts','rückwärts','tras','trás','trás para','voltar','recuar'],turn:['dreh','drehe','dreh dich','drehe dich','wende','wende dich','rotier','rotiere','girar','vire','rodar','virar'],complete:['komplett','komplett','vollstandig','vollständig','komplett','einmal','rundherum','completo','completa','todo','toda','redondo','circular','circulo'],cm:['zentimeter','cm','centimetro','centímetro','centi','cm'],grad:['grad','degree','degrees','grau','graus']};
 function parseOne(raw){const t=normalize(raw);if(!t)return [];
-if(/\b(stopp|stop|halt|anhalten)\b/.test(t))return [{cmd:'stop',value:0}];
-const left=/\blinks\b/.test(t),right=/\brechts\b/.test(t),back=/\b(zuruck|ruckwarts)\b/.test(t);
+if(patterns.stop.some(p=>fuzzyMatch(t,[p])))return [{cmd:'stop',value:0}];
+const left=patterns.left.some(p=>fuzzyMatch(t,[p])),right=patterns.right.some(p=>fuzzyMatch(t,[p])),back=patterns.backward.some(p=>fuzzyMatch(t,[p]));
 if(left&&right)throw Error('Direções conflitantes: '+raw);
-const match=t.match(/(\d+(?:[.,]\d+)?)\s*(zentimeter|cm|grad|degree|degrees)\b/);
-const turning=/\b(dreh\w*|wend\w*|rotier\w*)\b/.test(t)||!!(match&&/grad|degree/.test(match[2]));
-if(!match){if(turning)return [{cmd:left?'left':'right',value:/\b(komplett|vollstandig|einmal|rundherum)\b/.test(t)?360:90}];throw Error('Não reconheci o trecho: '+raw)}
+const match=t.match(/(\d+(?:[.,]\d+)?)\s*(?:'+patterns.cm.join('|')+')/i);
+const turning=patterns.turn.some(p=>fuzzyMatch(t,[p]))||!!(match&&patterns.grad.some(p=>fuzzyMatch(t,[p])));
+if(!match){if(turning)return [{cmd:left?'left':'right',value:patterns.complete.some(p=>fuzzyMatch(t,[p]))?360:90}];throw Error('Não reconheci o trecho: '+raw)}
 const value=Number(match[1].replace(',','.'));if(!(value>0))throw Error('Valor inválido: '+raw);
-if(turning){if(!/grad|degree/.test(match[2])||value>360)throw Error('Use um giro de até 360 Grad: '+raw);return [{cmd:left?'left':'right',value}]}
-if(!/zentimeter|cm/.test(match[2])||value>200)throw Error('Use uma distância de até 200 Zentimeter: '+raw);
+if(turning){if(!patterns.grad.some(p=>fuzzyMatch(t,[p]))||value>360)throw Error('Use um giro de até 360 Grad: '+raw);return [{cmd:left?'left':'right',value}]}
+if(!patterns.cm.some(p=>fuzzyMatch(t,[p]))||value>200)throw Error('Use uma distância de até 200 Zentimeter: '+raw);
 if(left||right)return [{cmd:left?'left':'right',value:90},{cmd:'forward',value}];
 return [{cmd:back?'backward':'forward',value}];}
-function parse(text){const parts=text.split(/\b(?:dann|danach|anschliessend|anschließend)\b|[,;]|\.(?=\s|$)/i).map(s=>s.trim()).filter(Boolean);if(!parts.length)throw Error('Digite um comando.');if(parts.length>25)throw Error('Máximo de 25 instruções.');const result=parts.flatMap(parseOne);if(result.length>50)throw Error('Sequência muito longa.');return result;}
+function parse(text){const parts=text.split(/\b(?:dann|danach|anschliessend|anschließend|depois|então|entao|e)\b|[,;]|\.(?=\s|$)/i).map(s=>s.trim()).filter(Boolean);if(!parts.length)throw Error('Digite um comando.');if(parts.length>25)throw Error('Máximo de 25 instruções.');const result=parts.flatMap(parseOne);if(result.length>50)throw Error('Sequência muito longa.');return result;}
 // O sistema de coordenadas usa X para a direita e Y para baixo, preservando o firmware original.
 // Cada intervalo da grade representa exatamente 1 cm no mundo virtual.
 const view={pxPerCm:12,centerX:0,centerY:0};
